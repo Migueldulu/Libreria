@@ -55,7 +55,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-#Configuración Android
+#Configuracion Android
 if(ANDROID)
     target_include_directories(samplexrframework PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
     target_compile_definitions(
@@ -63,7 +63,7 @@ if(ANDROID)
         PUBLIC
             XR_OS_ANDROID=1                    # Sistema operativo
             XR_USE_PLATFORM_ANDROID=1          # Plataforma OpenXR
-            XR_USE_GRAPHICS_API_OPENGL_ES=1    # API gráfica
+            XR_USE_GRAPHICS_API_OPENGL_ES=1    # API grafica
             ANDROID_NDK                        # Flag general NDK
             $<IF:$<CONFIG:Debug>,OVR_BUILD_DEBUG=1,>
     )

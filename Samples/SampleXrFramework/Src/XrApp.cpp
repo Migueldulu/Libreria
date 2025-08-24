@@ -36,7 +36,7 @@ using OVR::Vector2f;
 using OVR::Vector3f;
 using OVR::Vector4f;
 
-//Convierte códigos  y errores a texto legible
+//Convierte codigos  y errores a texto legible
 std::string OXR_ResultToString(XrInstance instance, XrResult result) {
     char errorBuffer[XR_MAX_RESULT_STRING_SIZE]{};
     xrResultToString(instance, result, errorBuffer);
