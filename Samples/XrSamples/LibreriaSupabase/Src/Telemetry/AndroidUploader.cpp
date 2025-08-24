@@ -103,13 +103,13 @@ namespace VRTelemetry {
         auto now = std::chrono::system_clock::now();
         auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
-        std::ostringstream json;
-        json << "{"
+        std::ostringstream oss;
+        oss << "{"
              << "\"session_id\":\"" << sessionId << "\","
              << "\"device_info\":\"Meta Quest - LibreriaSupabase\","
              << "\"start_time\":" << timestamp
              << "}";
-        return json.str();
+        return oss.str();
     }
 
     std::string AndroidUploader::createFrameDataJson(const std::vector<FrameData>& frameData) {
@@ -122,7 +122,6 @@ namespace VRTelemetry {
                  << "\"session_id\":\"" << sessionId << "\","
                  << "\"timestamp\":" << frame.timestamp << ","
                  << "\"frame_data\":\"" << escapeJsonString(frame.toCSV()) << "\","
-                 // CORREGIDO: Usar la nueva estructura VRFrameData
                  << "\"head_pos_x\":" << frame.headPose.x << ","
                  << "\"head_pos_y\":" << frame.headPose.y << ","
                  << "\"head_pos_z\":" << frame.headPose.z << ","
@@ -196,11 +195,18 @@ namespace VRTelemetry {
         bool result = false;
 
         try {
-            // Obtener la clase HttpHelper de Java
+            // CORRECCIÓN: Package name correcto que coincide con HttpHelper.java
             jclass httpHelperClass = env->FindClass("io/github/migueldulu/LibreriaSupabase/HttpHelper");
             if (!httpHelperClass) {
-                ALOG("HttpHelper class not found");
-                throw std::runtime_error("Class not found");
+                ALOG("HttpHelper class not found - checking if class exists...");
+
+                // Intentar verificar si hay excepciones JNI pendientes
+                if (env->ExceptionCheck()) {
+                    env->ExceptionDescribe(); // Esto imprime la excepción detallada
+                    env->ExceptionClear();
+                }
+
+                throw std::runtime_error("HttpHelper class not found");
             }
 
             // Obtener el método makeRequest
@@ -212,7 +218,13 @@ namespace VRTelemetry {
 
             if (!makeRequestMethod) {
                 ALOG("makeRequest method not found");
-                throw std::runtime_error("Method not found");
+
+                if (env->ExceptionCheck()) {
+                    env->ExceptionDescribe();
+                    env->ExceptionClear();
+                }
+
+                throw std::runtime_error("makeRequest method not found");
             }
 
             // Convertir strings a jstring
@@ -221,6 +233,17 @@ namespace VRTelemetry {
             jstring jData = env->NewStringUTF(jsonData.c_str());
             jstring jApiKey = env->NewStringUTF(config.apiKey.c_str());
 
+            // Verificar que todas las strings se crearon correctamente
+            if (!jUrl || !jMethod || !jData || !jApiKey) {
+                ALOG("Failed to create one or more jstring objects");
+                throw std::runtime_error("Failed to create jstring objects");
+            }
+
+            ALOG("Calling Java makeRequest method...");
+            ALOG("URL: %s", url.c_str());
+            ALOG("Method: %s", method.c_str());
+            ALOG("JSON size: %zu", jsonData.length());
+
             // Llamar al método Java
             jboolean jResult = env->CallStaticBooleanMethod(
                 httpHelperClass,
@@ -228,7 +251,16 @@ namespace VRTelemetry {
                 jUrl, jMethod, jData, jApiKey
             );
 
-            result = (bool)jResult;
+            // Verificar si hubo excepciones durante la llamada
+            if (env->ExceptionCheck()) {
+                ALOG("Exception occurred during Java method call");
+                env->ExceptionDescribe();
+                env->ExceptionClear();
+                result = false;
+            } else {
+                result = (bool)jResult;
+                ALOG("Java method returned: %s", result ? "true" : "false");
+            }
 
             // Limpiar referencias locales
             env->DeleteLocalRef(jUrl);
