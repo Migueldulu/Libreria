@@ -41,16 +41,27 @@ public class HttpHelper {
             // Configurar la conexión
             connection.setRequestMethod(method);
             connection.setRequestProperty("Content-Type", "application/json");
+
+            // CORREGIDO: Supabase necesita AMBOS headers
             connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+            connection.setRequestProperty("apikey", apiKey);  // ← NUEVO: Header adicional requerido
+
             connection.setRequestProperty("Prefer", "return=representation");
             connection.setConnectTimeout(15000); // 15 segundos
             connection.setReadTimeout(30000);    // 30 segundos
             connection.setDoOutput(true);
             connection.setDoInput(true);
 
+            // NUEVO: Log de headers para debug
+            Log.d(TAG, "Headers set:");
+            Log.d(TAG, "  Content-Type: application/json");
+            Log.d(TAG, "  Authorization: Bearer " + apiKey.substring(0, Math.min(10, apiKey.length())) + "...");
+            Log.d(TAG, "  apikey: " + apiKey.substring(0, Math.min(10, apiKey.length())) + "...");
+
             // Enviar datos JSON
             if (jsonData != null && !jsonData.isEmpty()) {
                 Log.d(TAG, "Sending JSON data (length: " + jsonData.length() + ")");
+                Log.d(TAG, "JSON preview: " + jsonData.substring(0, Math.min(200, jsonData.length())) + "...");
 
                 try (DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream())) {
                     outputStream.writeBytes(jsonData);
@@ -87,6 +98,19 @@ public class HttpHelper {
                 Log.i(TAG, "Request successful: " + responseCode);
             } else {
                 Log.w(TAG, "Request failed: " + responseCode + " - " + responseBody);
+
+                // NUEVO: Análisis específico de errores de Supabase
+                if (responseCode == 401) {
+                    if (responseBody.contains("No API key found")) {
+                        Log.e(TAG, "SUPABASE ERROR: API key not found in headers");
+                    } else if (responseBody.contains("Invalid API key")) {
+                        Log.e(TAG, "SUPABASE ERROR: API key is invalid");
+                    }
+                } else if (responseCode == 400) {
+                    Log.e(TAG, "SUPABASE ERROR: Bad request - check JSON format");
+                } else if (responseCode == 404) {
+                    Log.e(TAG, "SUPABASE ERROR: Table or endpoint not found");
+                }
             }
 
             return success;

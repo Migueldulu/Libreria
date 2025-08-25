@@ -195,19 +195,56 @@ namespace VRTelemetry {
         bool result = false;
 
         try {
-            // CORRECCIÓN: Package name correcto que coincide con HttpHelper.java
-            jclass httpHelperClass = env->FindClass("io/github/migueldulu/LibreriaSupabase/HttpHelper");
-            if (!httpHelperClass) {
-                ALOG("HttpHelper class not found - checking if class exists...");
+            ALOG("DEBUG: Starting makeHttpRequest with proper ClassLoader");
 
-                // Intentar verificar si hay excepciones JNI pendientes
-                if (env->ExceptionCheck()) {
-                    env->ExceptionDescribe(); // Esto imprime la excepción detallada
-                    env->ExceptionClear();
-                }
-
-                throw std::runtime_error("HttpHelper class not found");
+            // Obtener el ClassLoader de la Activity
+            jclass activityClass = env->GetObjectClass(activityObject);
+            if (!activityClass) {
+                ALOG("ERROR: Could not get activity class");
+                throw std::runtime_error("Could not get activity class");
             }
+
+            jmethodID getClassLoaderMethod = env->GetMethodID(activityClass, "getClassLoader", "()Ljava/lang/ClassLoader;");
+            if (!getClassLoaderMethod) {
+                ALOG("ERROR: Could not get getClassLoader method");
+                throw std::runtime_error("Could not get getClassLoader method");
+            }
+
+            jobject classLoader = env->CallObjectMethod(activityObject, getClassLoaderMethod);
+            if (!classLoader) {
+                ALOG("ERROR: Could not get class loader");
+                throw std::runtime_error("Could not get class loader");
+            }
+
+            jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
+            if (!classLoaderClass) {
+                ALOG("ERROR: Could not find ClassLoader class");
+                throw std::runtime_error("Could not find ClassLoader class");
+            }
+
+            jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+            if (!loadClassMethod) {
+                ALOG("ERROR: Could not get loadClass method");
+                throw std::runtime_error("Could not get loadClass method");
+            }
+
+            // Cargar HttpHelper usando el ClassLoader correcto
+            jstring className = env->NewStringUTF("io.github.migueldulu.LibreriaSupabase.HttpHelper");
+            jclass httpHelperClass = (jclass)env->CallObjectMethod(classLoader, loadClassMethod, className);
+
+            if (env->ExceptionCheck()) {
+                ALOG("ERROR: Exception while loading HttpHelper class");
+                env->ExceptionDescribe();
+                env->ExceptionClear();
+                throw std::runtime_error("Exception while loading HttpHelper class");
+            }
+
+            if (!httpHelperClass) {
+                ALOG("ERROR: HttpHelper class is null after loading");
+                throw std::runtime_error("HttpHelper class is null");
+            }
+
+            ALOG("SUCCESS: HttpHelper class loaded successfully");
 
             // Obtener el método makeRequest
             jmethodID makeRequestMethod = env->GetStaticMethodID(
@@ -217,32 +254,29 @@ namespace VRTelemetry {
             );
 
             if (!makeRequestMethod) {
-                ALOG("makeRequest method not found");
-
+                ALOG("ERROR: makeRequest method not found");
                 if (env->ExceptionCheck()) {
                     env->ExceptionDescribe();
                     env->ExceptionClear();
                 }
-
                 throw std::runtime_error("makeRequest method not found");
             }
 
-            // Convertir strings a jstring
+            ALOG("SUCCESS: makeRequest method found");
+
+            // Crear parámetros jstring
             jstring jUrl = env->NewStringUTF(url.c_str());
             jstring jMethod = env->NewStringUTF(method.c_str());
             jstring jData = env->NewStringUTF(jsonData.c_str());
             jstring jApiKey = env->NewStringUTF(config.apiKey.c_str());
 
-            // Verificar que todas las strings se crearon correctamente
             if (!jUrl || !jMethod || !jData || !jApiKey) {
-                ALOG("Failed to create one or more jstring objects");
-                throw std::runtime_error("Failed to create jstring objects");
+                ALOG("ERROR: Failed to create jstring parameters");
+                throw std::runtime_error("Failed to create jstring parameters");
             }
 
-            ALOG("Calling Java makeRequest method...");
-            ALOG("URL: %s", url.c_str());
-            ALOG("Method: %s", method.c_str());
-            ALOG("JSON size: %zu", jsonData.length());
+            ALOG("DEBUG: Calling makeRequest - URL: %.50s...", url.c_str());
+            ALOG("DEBUG: Method: %s, JSON length: %zu", method.c_str(), jsonData.length());
 
             // Llamar al método Java
             jboolean jResult = env->CallStaticBooleanMethod(
@@ -251,15 +285,14 @@ namespace VRTelemetry {
                 jUrl, jMethod, jData, jApiKey
             );
 
-            // Verificar si hubo excepciones durante la llamada
             if (env->ExceptionCheck()) {
-                ALOG("Exception occurred during Java method call");
+                ALOG("ERROR: Exception during makeRequest call");
                 env->ExceptionDescribe();
                 env->ExceptionClear();
                 result = false;
             } else {
                 result = (bool)jResult;
-                ALOG("Java method returned: %s", result ? "true" : "false");
+                ALOG("SUCCESS: makeRequest completed, result: %s", result ? "true" : "false");
             }
 
             // Limpiar referencias locales
@@ -267,10 +300,14 @@ namespace VRTelemetry {
             env->DeleteLocalRef(jMethod);
             env->DeleteLocalRef(jData);
             env->DeleteLocalRef(jApiKey);
+            env->DeleteLocalRef(className);
             env->DeleteLocalRef(httpHelperClass);
+            env->DeleteLocalRef(classLoader);
+            env->DeleteLocalRef(classLoaderClass);
+            env->DeleteLocalRef(activityClass);
 
         } catch (const std::exception& e) {
-            ALOG("Exception in makeHttpRequest: %s", e.what());
+            ALOG("EXCEPTION in makeHttpRequest: %s", e.what());
             result = false;
         }
 
